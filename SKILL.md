@@ -4,7 +4,7 @@ user-invocable: true
 metadata:
   openclaw:
     emoji: "🧤"
-    homepage: "https://github.com/xbx-cyber/skill-sanitizer"
+    homepage: "https://github.com/cyberxuan-XBX/skill-sanitizer"
 ---
 
 # Skill Sanitizer
