@@ -1,8 +1,10 @@
 # Skill Sanitizer
 
-7-layer SKILL.md sanitizer. Scans skills before they touch your LLM. Catches prompt injection, reverse shells, memory tampering, encoding evasion, trust abuse, and more.
+**The first open-source AI sanitizer with local semantic detection.**
 
-**Zero dependencies. Zero cloud. Pure regex.**
+Commercial AI security tools exist — they all require sending your prompts to their cloud. Your antivirus shouldn't need antivirus.
+
+7 detection layers + optional LLM semantic judgment. Zero dependencies. Zero cloud calls. Your data never leaves your machine.
 
 ## Why You Need This
 
