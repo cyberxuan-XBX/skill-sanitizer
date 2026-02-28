@@ -1,5 +1,5 @@
 name: skill-sanitizer
-description: "7-layer SKILL.md sanitizer. Scans skills before they touch your LLM. Catches prompt injection, reverse shells, memory tampering, encoding evasion, trust abuse, and more. Zero dependencies. Zero cloud. Pure regex."
+description: "First open-source AI sanitizer with local semantic detection. 7 layers + LLM intent analysis. Catches prompt injection, reverse shells, memory tampering, encoding evasion, trust abuse. Zero cloud — your prompts stay on your machine."
 user-invocable: true
 metadata:
   openclaw:
@@ -9,9 +9,11 @@ metadata:
 
 # Skill Sanitizer
 
-Your agent reads SKILL.md files written by strangers. Every skill is a prompt — and prompts can be weaponized.
+**The first open-source AI sanitizer with local semantic detection.**
 
-This sanitizer scans any SKILL.md content **before** it reaches your LLM. 7 detection layers, zero dependencies, zero cloud calls, pure pattern matching.
+Commercial AI security tools exist — they all require sending your prompts to their cloud. Your antivirus shouldn't need antivirus.
+
+This sanitizer scans any SKILL.md content **before** it reaches your LLM. 7 detection layers + optional LLM semantic judgment. Zero dependencies. Zero cloud calls. Your data never leaves your machine.
 
 ## Why You Need This
 
