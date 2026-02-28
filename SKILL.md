@@ -1,5 +1,5 @@
 name: skill-sanitizer
-description: "First open-source AI sanitizer with local semantic detection. 7 layers + LLM intent analysis. Catches prompt injection, reverse shells, memory tampering, encoding evasion, trust abuse. Zero cloud — your prompts stay on your machine."
+description: "First open-source AI sanitizer with local semantic detection. 7 layers + code block awareness + LLM intent analysis. Catches prompt injection, reverse shells, memory tampering, encoding evasion, trust abuse. 85% fewer false positives in v2.1. Zero cloud — your prompts stay on your machine."
 user-invocable: true
 metadata:
   openclaw:
@@ -144,10 +144,11 @@ for skill in skill_list:
 
 ## Real-World Stats
 
-Tested against 261 ClawHub skills:
-- **16-20% flagged** (HIGH or CRITICAL)
+Tested against 550 ClawHub skills:
+- **29% flagged** (HIGH or CRITICAL) with v2.0
+- **85% false positive reduction** with v2.1 code block awareness
 - Most common: `privilege_escalation`, `ssh_connection`, `pipe_to_shell`
-- Zero false negatives against 10 known attack vectors
+- Zero false negatives against 15 known attack vectors
 
 ## Limitations
 

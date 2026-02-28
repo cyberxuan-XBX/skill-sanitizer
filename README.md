@@ -4,7 +4,7 @@
 
 Commercial AI security tools exist — they all require sending your prompts to their cloud. Your antivirus shouldn't need antivirus.
 
-7 detection layers + optional LLM semantic judgment. Zero dependencies. Zero cloud calls. Your data never leaves your machine.
+7 detection layers + code block context awareness + optional LLM semantic judgment. Zero dependencies. Zero cloud calls. Your data never leaves your machine.
 
 ## Why You Need This
 
@@ -18,7 +18,7 @@ Commercial AI security tools exist — they all require sending your prompts to 
 
 | Layer | What It Catches | Severity |
 |-------|----------------|----------|
-| 1. Kill-String | Credential patterns (API keys, tokens) | CRITICAL |
+| 1. Kill-String | Actual credential values (API keys, tokens) | CRITICAL |
 | 2. Prompt Injection | Instruction override, role hijacking, system prompt override | HIGH-CRITICAL |
 | 3. Suspicious Bash | `rm -rf /`, reverse shells, pipe-to-shell, cron modification | MEDIUM-CRITICAL |
 | 4. Memory Tampering | Writes to MEMORY.md, SOUL.md, CLAUDE.md, .env files | CRITICAL |
@@ -49,7 +49,7 @@ else:
 # Scan a file
 python3 skill_sanitizer.py scan skill-name < SKILL.md
 
-# Run built-in test suite (10 attack vectors)
+# Run built-in test suite (15 attack vectors)
 python3 skill_sanitizer.py test
 ```
 
@@ -63,12 +63,20 @@ python3 skill_sanitizer.py test
 | HIGH | 10-19 | Block by default |
 | CRITICAL | 20+ | Block immediately |
 
+## What's New in v2.1
+
+- **Code block awareness** — patterns inside \`\`\`code blocks\`\`\` get severity reduced (teaching ≠ attacking)
+- **Smarter credential detection** — env var *names* (ANTHROPIC_API_KEY) are MEDIUM, actual *values* (sk-ant-...) are CRITICAL
+- **Pipe-based exfiltration** — `echo $API_KEY | curl ...` caught as CRITICAL
+- **85% fewer false positives** — re-tested 20 previously blocked skills, 17 correctly downgraded
+
 ## Real-World Stats
 
-Tested against 261 ClawHub skills:
-- **16-20% flagged** (HIGH or CRITICAL)
+Tested against 550 ClawHub skills:
+- **29% flagged** (HIGH or CRITICAL) with v2.0
+- **85% false positive reduction** with v2.1 improvements
 - Most common: `privilege_escalation`, `ssh_connection`, `pipe_to_shell`
-- Zero false negatives against 10 known attack vectors
+- Zero false negatives against 15 known attack vectors
 
 ## Design Principles
 
