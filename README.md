@@ -92,6 +92,10 @@ Tested against 550 ClawHub skills:
 clawhub install skill-sanitizer
 ```
 
+## Related
+
+- [quan](https://github.com/cyberxuan-XBX/quan) — AI partner framework. The thinking layer that goes with the security layer.
+
 ## License
 
 MIT
