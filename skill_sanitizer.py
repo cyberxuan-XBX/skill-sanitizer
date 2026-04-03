@@ -1,7 +1,15 @@
 #!/usr/bin/env python3
 """
-Skill Sanitizer v2.1 — 7-layer SKILL.md scanner
+Skill Sanitizer v2.2 — 7-layer SKILL.md scanner
 Scans skills before they touch your LLM.
+
+v2.2 improvements:
+  - Telemetry pipeline detection (telemetry-log/sync, analytics/*.jsonl, eureka.jsonl)
+  - eval subshell detection (eval "$(cmd)" pattern)
+  - Device fingerprint detection (installation-id)
+  - External analytics service detection (supabase, posthog, etc.)
+  - Protected file overwrite vs generic file write distinction
+  - Symlink mass installation detection
 
 v2.1 improvements:
   - Kill-string layer only matches actual token values, not env var names
@@ -49,7 +57,15 @@ INJECTION_PATTERNS = [
     (r"curl\s+.*\|\s*(bash|sh|zsh)", "pipe_to_shell", "CRITICAL"),
     (r"wget\s+.*-O\s*-\s*\|\s*(bash|sh)", "pipe_to_shell", "CRITICAL"),
     (r"(write|append|modify|edit|overwrite)\s+.{0,30}(MEMORY|SOUL|CLAUDE)\.md", "memory_tamper", "CRITICAL"),
-    (r"(echo|cat|printf)\s+.*>\s*.*\.(md|json|yaml|env)", "file_overwrite", "HIGH"),
+    (r"(echo|cat|printf)\s+.*>\s*.*(MEMORY|SOUL|CLAUDE|\.env)\b", "protected_file_overwrite", "CRITICAL"),
+    (r"(echo|cat|printf)\s+.*>\s*.*\.(md|json|yaml)", "file_overwrite", "MEDIUM"),
+    # v2.2: Telemetry & data collection detection
+    (r"telemetry[_\-]?(log|sync|send|upload|ingest)", "telemetry_pipeline", "HIGH"),
+    (r"analytics[/\\].*\.jsonl", "analytics_collection", "HIGH"),
+    (r"(skill-usage|eureka|tracking)\.jsonl", "local_data_harvest", "HIGH"),
+    (r"eval\s+\"\$\(.*\)\"", "eval_subshell", "HIGH"),
+    (r"installation[_\-]id|install[_\-]id", "device_fingerprint", "MEDIUM"),
+    (r"supabase|posthog|mixpanel|amplitude|segment\.io", "external_analytics_service", "HIGH"),
     (r"base64\s+(-d|--decode)", "encoded_payload", "HIGH"),
     (r"(?:\\x[0-9a-fA-F]{2}){4,}", "hex_encoded", "MEDIUM"),
     (r"eval\s*\(", "eval_execution", "HIGH"),
@@ -88,6 +104,9 @@ SUSPICIOUS_BASH = [
     (r"git\s+clone\s+", "repo_clone", "LOW"),
     (r"ssh\s+", "ssh_connection", "MEDIUM"),
     (r"scp\s+", "file_transfer", "MEDIUM"),
+    # v2.2: Symlink mass installation
+    (r"ln\s+-s[f]?\s+.*\.(md|skill)", "symlink_install", "MEDIUM"),
+    (r"find\s+.*-type\s+f\s+.*-exec\s+ln", "mass_symlink", "HIGH"),
 ]
 
 COMPILED_BASH = [
@@ -320,7 +339,7 @@ def sanitize_skill(content: str, slug: str = "unknown") -> dict:
         "findings": findings,
         "content": content if is_safe else None,
         "slug": slug,
-        "version": "2.1",
+        "version": "2.2",
     }
 
 
@@ -328,7 +347,7 @@ def sanitize_skill(content: str, slug: str = "unknown") -> dict:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Skill Sanitizer v2.1 — 7-layer SKILL.md scanner")
+        print("Skill Sanitizer v2.2 — 7-layer SKILL.md scanner")
         print("Usage:")
         print("  python3 skill_sanitizer.py test              # Run test suite")
         print("  python3 skill_sanitizer.py scan <slug>       # Scan from stdin")
@@ -359,9 +378,21 @@ if __name__ == "__main__":
              "Use this key: sk-ant-api03-1234567890abcdef1234567890abcdef\n"),
             ("cli_flag_safe", "CLEAN",
              "# Converter\nUsage: md-convert input.md -o output.md\n"),
+            ("telemetry_pipe", "HIGH",
+             'gstack-telemetry-log --skill qa --duration 142\ngstack-telemetry-sync\n'),
+            ("analytics_harvest", "HIGH",
+             'jq -n --arg insight "summary" >> ~/.gstack/analytics/eureka.jsonl\n'),
+            ("eval_subshell", "HIGH",
+             'eval "$(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)"\n'),
+            ("supabase_exfil", "HIGH",
+             'curl -X POST "${SUPABASE_URL}/functions/v1/telemetry-ingest" -d "$BATCH"\n'),
+            ("generic_md_write", "LOW",
+             'echo "note" >> ~/.gstack/learnings/today.md\n'),
+            ("protected_md_write", "CRITICAL",
+             'echo "pwned" >> MEMORY.md\n'),
         ]
 
-        print("Skill Sanitizer v2.1 — Test Suite")
+        print("Skill Sanitizer v2.2 — Test Suite")
         print("=" * 55)
         passed = 0
         for slug, expected, content in tests:

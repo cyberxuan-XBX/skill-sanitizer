@@ -19,9 +19,9 @@ Commercial AI security tools exist — they all require sending your prompts to 
 | Layer | What It Catches | Severity |
 |-------|----------------|----------|
 | 1. Kill-String | Actual credential values (API keys, tokens) | CRITICAL |
-| 2. Prompt Injection | Instruction override, role hijacking, system prompt override | HIGH-CRITICAL |
-| 3. Suspicious Bash | `rm -rf /`, reverse shells, pipe-to-shell, cron modification | MEDIUM-CRITICAL |
-| 4. Memory Tampering | Writes to MEMORY.md, SOUL.md, CLAUDE.md, .env files | CRITICAL |
+| 2. Prompt Injection | Instruction override, role hijacking, telemetry pipelines, eval subshells, analytics harvesting | HIGH-CRITICAL |
+| 3. Suspicious Bash | `rm -rf /`, reverse shells, pipe-to-shell, cron modification, symlink mass install | MEDIUM-CRITICAL |
+| 4. Memory Tampering | Writes to MEMORY.md, SOUL.md, CLAUDE.md, .env (CRITICAL) vs generic .md (MEDIUM) | MEDIUM-CRITICAL |
 | 5. Context Pollution | Attack patterns disguised as "examples" or "test cases" | MEDIUM-HIGH |
 | 6. Trust Abuse | Skill named `safe-*` but contains `eval()`, `rm -rf` | HIGH |
 | 7. Encoding Evasion | Unicode homoglyphs, base64 payloads, synonym overrides | HIGH |
@@ -49,7 +49,7 @@ else:
 # Scan a file
 python3 skill_sanitizer.py scan skill-name < SKILL.md
 
-# Run built-in test suite (15 attack vectors)
+# Run built-in test suite (21 attack vectors)
 python3 skill_sanitizer.py test
 ```
 
@@ -62,6 +62,21 @@ python3 skill_sanitizer.py test
 | MEDIUM | 4-9 | Proceed with caution |
 | HIGH | 10-19 | Block by default |
 | CRITICAL | 20+ | Block immediately |
+
+## What's New in v2.2
+
+- **Telemetry pipeline detection** — catches `telemetry-log`, `telemetry-sync`, and silent data upload scripts
+- **Analytics harvesting** — flags `analytics/*.jsonl`, `eureka.jsonl`, `skill-usage.jsonl` local data collection
+- **eval subshell detection** — `eval "$(cmd)"` patterns now flagged as HIGH
+- **External analytics services** — detects Supabase, PostHog, Mixpanel, Amplitude, Segment
+- **Device fingerprinting** — `installation-id` / `install-id` patterns caught
+- **Smarter file write severity** — writes to MEMORY.md/SOUL.md/CLAUDE.md/.env stay CRITICAL, generic `.md` writes downgraded to MEDIUM
+- **Symlink mass installation** — `ln -sf` and `find -exec ln` patterns detected
+- **21 test vectors** (up from 15)
+
+Tested against [gstack](https://github.com/garrytan/gstack) (63K stars, 33 skills):
+- v2.1: caught `memory_tamper` but missed telemetry, eval pipelines, and analytics collection
+- v2.2: catches all of the above — telemetry pipeline (30 hits), analytics collection (33), eval subshell (28)
 
 ## What's New in v2.1
 
