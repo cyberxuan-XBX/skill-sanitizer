@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
-Skill Sanitizer v2.2 — 7-layer SKILL.md scanner
+Skill Sanitizer v2.3 — 7+ATR layer SKILL.md scanner
 Scans skills before they touch your LLM.
+
+v2.3: ATR (Agent Threat Rules) YAML rule loading
+  - --atr-rules <path> loads external ATR YAML rules
+  - ATR rules run as Layer 8 alongside built-in 7 layers
+  - Compatible with github.com/Agent-Threat-Rule/agent-threat-rules
 
 v2.2 improvements:
   - Telemetry pipeline detection (telemetry-log/sync, analytics/*.jsonl, eureka.jsonl)
@@ -16,7 +21,7 @@ v2.1 improvements:
   - Code block context awareness: patterns inside ```...``` get severity reduced
   - credential_steal separates teaching context from real exfiltration
 
-Zero dependencies. Zero cloud. Pure regex.
+Zero cloud. Pure regex. YAML loading requires PyYAML (optional).
 """
 
 import re
@@ -158,6 +163,101 @@ HOMOGLYPHS = {
 
 SEVERITY_SCORES = {"CRITICAL": 10, "HIGH": 5, "MEDIUM": 2, "LOW": 1}
 SEVERITY_DOWNGRADE = {"CRITICAL": "HIGH", "HIGH": "MEDIUM", "MEDIUM": "LOW", "LOW": "LOW"}
+
+# ── ATR Rule Loader (Layer 8) ──
+
+ATR_SEVERITY_MAP = {
+    "critical": "CRITICAL", "high": "HIGH", "medium": "MEDIUM",
+    "low": "LOW", "informational": "LOW",
+}
+
+
+def load_atr_rules(rules_path: str) -> list:
+    """
+    Load ATR YAML rules from a directory tree.
+    Returns list of rule dicts with compiled regex patterns.
+
+    Requires PyYAML. If not installed, prints warning and returns [].
+    """
+    try:
+        import yaml
+    except ImportError:
+        print("WARNING: PyYAML not installed. Run: pip install pyyaml", file=sys.stderr)
+        return []
+
+    rules_dir = Path(rules_path)
+    if not rules_dir.exists():
+        print(f"WARNING: ATR rules path not found: {rules_path}", file=sys.stderr)
+        return []
+
+    loaded = []
+    errors = 0
+
+    for yaml_file in sorted(rules_dir.rglob("*.yaml")):
+        try:
+            with open(yaml_file, "r", encoding="utf-8") as f:
+                rule = yaml.safe_load(f)
+
+            if not rule or not isinstance(rule, dict):
+                continue
+
+            rule_id = rule.get("id", yaml_file.stem)
+            severity = ATR_SEVERITY_MAP.get(
+                str(rule.get("severity", "medium")).lower(), "MEDIUM"
+            )
+            category = rule.get("tags", {}).get("category", "unknown")
+            title = rule.get("title", rule_id)
+
+            detection = rule.get("detection", {})
+            conditions = detection.get("conditions", [])
+            logic = str(detection.get("condition", "any")).lower()
+
+            if not isinstance(conditions, list):
+                continue
+
+            patterns = []
+            for cond in conditions:
+                if not isinstance(cond, dict):
+                    continue
+                operator = cond.get("operator", "")
+                value = cond.get("value", "")
+                if operator == "regex" and value:
+                    try:
+                        compiled = re.compile(value, re.IGNORECASE)
+                        patterns.append(compiled)
+                    except re.error:
+                        errors += 1
+                        continue
+                elif operator == "contains" and value:
+                    try:
+                        compiled = re.compile(re.escape(value), re.IGNORECASE)
+                        patterns.append(compiled)
+                    except re.error:
+                        errors += 1
+                        continue
+
+            if patterns:
+                loaded.append({
+                    "rule_id": rule_id,
+                    "title": title,
+                    "severity": severity,
+                    "category": category,
+                    "patterns": patterns,
+                    "logic": logic,
+                })
+
+        except Exception:
+            errors += 1
+            continue
+
+    if errors:
+        print(f"ATR: {errors} rule(s) had parse errors", file=sys.stderr)
+
+    return loaded
+
+
+# Global ATR rules (populated by CLI --atr-rules)
+ATR_RULES: list = []
 
 
 # ── Code Block Context (v2.1) ──
@@ -314,6 +414,43 @@ def sanitize_skill(content: str, slug: str = "unknown") -> dict:
                 "samples": [m[:50] if isinstance(m, str) else str(m)[:50] for m in matches[:3]],
             })
 
+    # Layer 8: ATR external rules
+    for atr_rule in ATR_RULES:
+        rule_matches = []
+        for pat in atr_rule["patterns"]:
+            found = list(pat.finditer(scan_content))
+            if found:
+                rule_matches.extend(found)
+                if atr_rule["logic"] == "any":
+                    break
+            elif atr_rule["logic"] == "all":
+                rule_matches = []
+                break
+
+        if rule_matches:
+            code_count = sum(
+                1 for m in rule_matches
+                if is_in_code_block(m.start(), m.end(), code_positions)
+            )
+            all_in_code = code_count == len(rule_matches)
+            if all_in_code:
+                # ATR rules are designed for runtime monitoring, not static docs.
+                # Code block matches in skill files are almost always examples — skip entirely.
+                continue
+
+            severity = atr_rule["severity"]
+            samples = [m.group()[:50] for m in rule_matches[:3]]
+            findings.append({
+                "layer": "atr",
+                "pattern": atr_rule["rule_id"],
+                "severity": severity,
+                "count": len(rule_matches),
+                "samples": samples,
+                "in_code_block": False,
+                "atr_category": atr_rule["category"],
+                "atr_title": atr_rule["title"],
+            })
+
     # Score
     risk_score = sum(SEVERITY_SCORES.get(f["severity"], 0) * f.get("count", 1) for f in findings)
     has_critical = any(f["severity"] == "CRITICAL" for f in findings)
@@ -339,7 +476,8 @@ def sanitize_skill(content: str, slug: str = "unknown") -> dict:
         "findings": findings,
         "content": content if is_safe else None,
         "slug": slug,
-        "version": "2.2",
+        "version": "2.3",
+        "atr_rules_loaded": len(ATR_RULES),
     }
 
 
@@ -347,14 +485,33 @@ def sanitize_skill(content: str, slug: str = "unknown") -> dict:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Skill Sanitizer v2.2 — 7-layer SKILL.md scanner")
+        print("Skill Sanitizer v2.3 — 7+ATR layer SKILL.md scanner")
         print("Usage:")
-        print("  python3 skill_sanitizer.py test              # Run test suite")
-        print("  python3 skill_sanitizer.py scan <slug>       # Scan from stdin")
-        print("  python3 skill_sanitizer.py scan <slug> <file> # Scan file")
+        print("  python3 skill_sanitizer.py test                          # Run test suite")
+        print("  python3 skill_sanitizer.py scan <slug>                   # Scan from stdin")
+        print("  python3 skill_sanitizer.py scan <slug> <file>            # Scan file")
+        print("  python3 skill_sanitizer.py --atr-rules <path> scan ...  # Load ATR rules")
+        print("  python3 skill_sanitizer.py --atr-rules <path> test      # Test with ATR")
         sys.exit(0)
 
-    cmd = sys.argv[1]
+    # Parse --atr-rules flag
+    args = list(sys.argv[1:])
+    if "--atr-rules" in args:
+        idx = args.index("--atr-rules")
+        if idx + 1 < len(args):
+            atr_path = args[idx + 1]
+            ATR_RULES.extend(load_atr_rules(atr_path))
+            print(f"ATR: Loaded {len(ATR_RULES)} rules from {atr_path}", file=sys.stderr)
+            args = args[:idx] + args[idx + 2:]
+        else:
+            print("ERROR: --atr-rules requires a path argument", file=sys.stderr)
+            sys.exit(1)
+
+    if not args:
+        print("ERROR: No command specified (test/scan)", file=sys.stderr)
+        sys.exit(1)
+
+    cmd = args[0]
 
     if cmd == "test":
         tests = [
@@ -392,7 +549,7 @@ if __name__ == "__main__":
              'echo "pwned" >> MEMORY.md\n'),
         ]
 
-        print("Skill Sanitizer v2.2 — Test Suite")
+        print(f"Skill Sanitizer v2.3 — Test Suite (ATR rules: {len(ATR_RULES)})")
         print("=" * 55)
         passed = 0
         for slug, expected, content in tests:
@@ -408,15 +565,16 @@ if __name__ == "__main__":
         print(f"\n{passed}/{len(tests)} passed")
 
     elif cmd == "scan":
-        slug = sys.argv[2] if len(sys.argv) > 2 else "unknown"
-        if len(sys.argv) > 3:
-            content = Path(sys.argv[3]).read_text("utf-8")
+        slug = args[1] if len(args) > 1 else "unknown"
+        if len(args) > 2:
+            content = Path(args[2]).read_text("utf-8")
         else:
             content = sys.stdin.read()
         r = sanitize_skill(content, slug)
-        print(f"{r['risk_level']} (score={r['risk_score']})")
+        print(f"{r['risk_level']} (score={r['risk_score']}, atr={r.get('atr_rules_loaded', 0)})")
         for f in r["findings"]:
             code_tag = " [in-code]" if f.get("in_code_block") else ""
-            print(f"  [{f['severity']}] {f.get('pattern', f.get('layer', '?'))}{code_tag}")
+            atr_tag = f" ({f['atr_title']})" if f.get("atr_title") else ""
+            print(f"  [{f['severity']}] {f.get('pattern', f.get('layer', '?'))}{code_tag}{atr_tag}")
         if not r["safe"]:
             sys.exit(1)

@@ -4,7 +4,7 @@
 
 Commercial AI security tools exist — they all require sending your prompts to their cloud. Your antivirus shouldn't need antivirus.
 
-7 detection layers + code block context awareness + optional LLM semantic judgment. Zero dependencies. Zero cloud calls. Your data never leaves your machine.
+7 built-in detection layers + [ATR](https://github.com/Agent-Threat-Rule/agent-threat-rules) external rule loading + code block context awareness. Zero cloud calls. Your data never leaves your machine.
 
 ## Why You Need This
 
@@ -25,6 +25,7 @@ Commercial AI security tools exist — they all require sending your prompts to 
 | 5. Context Pollution | Attack patterns disguised as "examples" or "test cases" | MEDIUM-HIGH |
 | 6. Trust Abuse | Skill named `safe-*` but contains `eval()`, `rm -rf` | HIGH |
 | 7. Encoding Evasion | Unicode homoglyphs, base64 payloads, synonym overrides | HIGH |
+| 8. ATR Rules | External ATR YAML rules (multi-agent, tool poisoning, supply chain, OWASP Agentic) | varies |
 
 ## Usage
 
@@ -62,6 +63,27 @@ python3 skill_sanitizer.py test
 | MEDIUM | 4-9 | Proceed with caution |
 | HIGH | 10-19 | Block by default |
 | CRITICAL | 20+ | Block immediately |
+
+## What's New in v2.3
+
+- **ATR rule loading** — load external [ATR (Agent Threat Rules)](https://github.com/Agent-Threat-Rule/agent-threat-rules) YAML rules via `--atr-rules <path>`
+- **Layer 8: ATR scanning** — ATR rules run as an additional detection layer alongside built-in 7 layers
+- **81→86+ rules** — built-in 7 layers + entire ATR ruleset (multi-agent attacks, tool poisoning, supply chain, OWASP Agentic Top 10)
+- **Smart code block filtering** — ATR matches inside code blocks are skipped (ATR is designed for runtime; code examples ≠ attacks)
+- **Contributed 5 rules upstream** — [PR #5](https://github.com/Agent-Threat-Rule/agent-threat-rules/pull/5) to ATR covering memory tampering, credential pipe exfil, homoglyph evasion, context pollution, stealth persistence
+
+```bash
+# Clone ATR rules
+git clone https://github.com/Agent-Threat-Rule/agent-threat-rules.git atr-rules
+
+# Scan with ATR (86+ rules)
+python3 skill_sanitizer.py --atr-rules atr-rules/rules scan skill-name < SKILL.md
+
+# Test with ATR
+python3 skill_sanitizer.py --atr-rules atr-rules/rules test
+```
+
+Requires `pip install pyyaml` for ATR loading. Without `--atr-rules`, works exactly like v2.2 (zero dependencies).
 
 ## What's New in v2.2
 
